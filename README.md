@@ -12,6 +12,14 @@ Apri `index.html` con connessione internet. Se il browser limita l'accesso local
 - Shift: corsa
 - Pulsante FUOCO e trascinamento sul lato destro: controlli touch
 
+## Correzioni v0.2.1
+- La missione ora avanza: il checkpoint si attiva entro 12 m (prima la soglia era in metri ma scritta come gradi, quindi irraggiungibile)
+- Velocità di movimento corretta (prima ~200 m/s)
+- W/S e A/D ora seguono la direzione in cui guarda il personaggio
+- Edifici OSM posizionati e animati rispetto al giocatore, con collisioni corrette
+- Mouse: clic per bloccare il puntatore, poi clic per sparare
+- Avviso a schermo se Leaflet/Three.js non si caricano
+
 ## Novità v0.2
 - Edifici con impronte OpenStreetMap estruse in 3D tramite Overpass API, se il servizio è disponibile
 - Collisioni circolari semplificate con gli edifici caricati

@@ -40,7 +40,8 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
 <script>
-(()=>{
+if(typeof L==='undefined'||typeof THREE==='undefined'){document.getElementById('loading').textContent='Errore: librerie Leaflet/Three.js non caricate. Controlla la connessione internet.';document.getElementById('go').disabled=true;}
+else(()=>{
 const origin=L.latLng(40.2709,18.3368), map=L.map('map',{zoomControl:false}).setView(origin,18);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'}).addTo(map);
 const canvas=document.querySelector('#world'),renderer=new THREE.WebGLRenderer({canvas,alpha:true,antialias:true});
@@ -94,38 +95,40 @@ async function loadBuildings(){
   let count=0;
   ways.forEach(w=>{
    const pts=w.nodes.map(id=>nodes.get(id)).filter(Boolean);if(pts.length<4)return;
-   const coords=pts.map(([lat,lon])=>{const p=geoMeters(L.latLng(lat,lon));return [p.x,p.z];});
+   const gl=pts.reduce((a,q)=>[a[0]+q[0]/pts.length,a[1]+q[1]/pts.length],[0,0]);
+   // coordinate locali (unita di mondo) rispetto al baricentro; z invertita per la rotazione dell'estrusione
+   const coords=pts.map(([lat,lon])=>{const p=relPos(lat,lon,{lat:gl[0],lng:gl[1]});return [p.x,-p.z];});
    const shape=new THREE.Shape();shape.moveTo(coords[0][0],coords[0][1]);coords.slice(1).forEach(p=>shape.lineTo(p[0],p[1]));shape.closePath();
    const height=Math.max(2.5,Math.min(15,Number(w.tags['building:levels']||2)*1.65));
    const mesh=new THREE.Mesh(new THREE.ExtrudeGeometry(shape,{depth:height/4,bevelEnabled:false}),new THREE.MeshStandardMaterial({color:0xc5b99c,roughness:.95}));
-   // Shape coordinates are in horizontal x/z plane; extrusion is rotated into vertical.
-   mesh.rotation.x=-Math.PI/2;mesh.position.y=0;mesh.castShadow=true;mesh.receiveShadow=true;scene.add(mesh);
-   const center=coords.reduce((a,p)=>[a[0]+p[0]/coords.length,a[1]+p[1]/coords.length],[0,0]);
-   buildings.push({mesh,x:center[0],z:center[1],radius:Math.max(1.8,Math.min(5,Math.sqrt(Math.abs(coords.reduce((a,p,i)=>{const q=coords[(i+1)%coords.length];return a+p[0]*q[1]-q[0]*p[1]},0))/Math.PI))});
+   mesh.rotation.x=-Math.PI/2;mesh.castShadow=true;mesh.receiveShadow=true;scene.add(mesh);
+   const area=Math.abs(coords.reduce((a,p,i)=>{const q=coords[(i+1)%coords.length];return a+p[0]*q[1]-q[0]*p[1]},0))/2;
+   buildings.push({mesh,lat:gl[0],lng:gl[1],radius:Math.max(.8,Math.min(3.5,Math.sqrt(area/Math.PI)))});
    count++;
   });
+  refreshBuildings();
   $('loading').textContent=count?'Edifici OSM caricati: '+count+'.':'Nessun edificio OSM trovato nell’area caricata.';
  }catch(e){$('loading').textContent='Edifici 3D non caricati: servizio dati non raggiungibile. La mappa resta disponibile.';}
 }
-function refreshBuildings(){buildings.forEach(b=>{const p=geoMeters(L.latLng(playerLL.lat,playerLL.lng));b.mesh.position.x=b.x-p.x;b.mesh.position.z=b.z-p.z;});}
+function relPos(lat,lng,from){return {x:(lng-from.lng)*111320*Math.cos(from.lat*Math.PI/180)/4,z:-(lat-from.lat)*111320/4};}
+function refreshBuildings(){buildings.forEach(b=>{const p=relPos(b.lat,b.lng,playerLL);b.mesh.position.set(p.x,0,p.z);});}
 function enemyWorld(e,t){const p=geoMeters(e.ll);const wanderX=Math.sin(t*.0007+e.phase)*1.7,wanderZ=Math.cos(t*.00055+e.phase)*1.4;e.group.position.set(p.x+wanderX,Math.sin(t*.002+e.phase)*.12,p.z+wanderZ);e.group.rotation.y=t*.001+e.phase;}
 function blocked(next){
  // Simplified circular collision against OSM building centers.
- const old=playerLL;playerLL=next;const p=geoMeters(old);playerLL=old;
- for(const b of buildings){if(Math.hypot(p.x-b.x,p.z-b.z)<b.radius+.75)return true;}return false;
+ for(const b of buildings){const p=relPos(b.lat,b.lng,next);if(Math.hypot(p.x,p.z)<b.radius+.4)return true;}return false;
 }
 function move(dt){
  let f=(keys.KeyW||keys.ArrowUp?1:0)-(keys.KeyS||keys.ArrowDown?1:0),s=(keys.KeyD||keys.ArrowRight?1:0)-(keys.KeyA||keys.ArrowLeft?1:0);
  if(!f&&!s){walking=0;return;}const l=Math.hypot(f,s);f/=l;s/=l;walking+=dt*10;
- const speed=(keys.ShiftLeft||keys.ShiftRight?0.000052:0.000031)*dt*60;
- const dLat=(-Math.cos(yaw)*f+Math.sin(yaw)*s)*speed,dLon=(Math.sin(yaw)*f+Math.cos(yaw)*s)*speed/Math.cos(playerLL.lat*Math.PI/180);
+ const speed=(keys.ShiftLeft||keys.ShiftRight?0.0002:0.00012)*dt;
+ const dLat=(Math.cos(yaw)*f+Math.sin(yaw)*s)*speed,dLon=(-Math.sin(yaw)*f+Math.cos(yaw)*s)*speed/Math.cos(playerLL.lat*Math.PI/180);
  const next=L.latLng(playerLL.lat+dLat,playerLL.lng+dLon);
  if(!blocked(next)){playerLL=next;map.panTo(playerLL,{animate:false});refreshBuildings();}
 }
 function shoot(){
  if(!started||phase===2)return;if(ammo<=0){msg('Caricatore vuoto: premi R.');return;}ammo--;
  let hit=null,best=999;
- enemies.forEach(e=>{if(!e.alive)return;const p=geoMeters(e.ll),dist=Math.hypot(p.x,p.z);const a=Math.atan2(p.x,-p.z);const d=Math.atan2(Math.sin(a-yaw),Math.cos(a-yaw));if(Math.abs(d)<.24&&dist<18&&dist<best){hit=e;best=dist;}});
+ enemies.forEach(e=>{if(!e.alive)return;const p=geoMeters(e.ll),dist=Math.hypot(p.x,p.z);const a=Math.atan2(p.x,-p.z);const d=Math.atan2(Math.sin(a+yaw),Math.cos(a+yaw));if(Math.abs(d)<.24&&dist<24&&dist<best){hit=e;best=dist;}});
  if(hit){hit.alive=false;hit.group.visible=false;kills++;msg('Drone neutralizzato.');}
  else msg('Mancato. Avvicinati e allinea il mirino.');
  updateHud();
@@ -134,7 +137,7 @@ function reloadGun(){if(ammo===12||reload>0)return;reload=1.15;msg('Ricarica in 
 addEventListener('keydown',e=>{keys[e.code]=true;if(e.code==='Space'){e.preventDefault();shoot();}if(e.code==='KeyR')reloadGun();});
 addEventListener('keyup',e=>keys[e.code]=false);
 addEventListener('mousemove',e=>{if(started&&document.pointerLockElement===canvas)yaw-=e.movementX*.0023;});
-canvas.addEventListener('click',()=>{if(started&&!('ontouchstart'in window))canvas.requestPointerLock?.();});
+document.addEventListener('mousedown',e=>{if(!started||e.target.closest('button'))return;if(document.pointerLockElement!==canvas){if(!('ontouchstart'in window))canvas.requestPointerLock?.();}else shoot();});
 $('fire').onclick=shoot;
 let touchX=null;addEventListener('touchmove',e=>{if(!started)return;const t=e.touches[0];if(t.clientX>innerWidth*.48){if(touchX!==null)yaw-=(t.clientX-touchX)*.008;touchX=t.clientX;}},{passive:true});
 addEventListener('touchend',()=>touchX=null);
@@ -145,7 +148,7 @@ function loop(now){requestAnimationFrame(loop);const dt=Math.min((now-last)/1000
  if(started){
   move(dt);if(reload>0){reload-=dt;if(reload<=0){ammo=12;updateHud();msg('Caricatore pronto.');}}
   if(notice>0){notice-=dt;if(notice<=0)$('message').style.display='none';}
-  if(phase===0&&playerLL.distanceTo(checkpoint)<.000095){phase=1;msg('Checkpoint raggiunto! I droni sono attivi: neutralizzali.');updateHud();}
+  if(phase===0&&playerLL.distanceTo(checkpoint)<12){phase=1;msg('Checkpoint raggiunto! I droni sono attivi: neutralizzali.');updateHud();}
   if(phase===1&&kills===3){phase=2;msg('Missione completata!');updateHud();}
   player.rotation.y=yaw;
   limbs.forEach((limb,i)=>{limb.rotation.x=walking?Math.sin(walking+(i%2)*Math.PI)*.55:0;});
