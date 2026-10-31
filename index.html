@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Melendugno: Operazione Salento — v0.2</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#14221d;color:#fff;font-family:system-ui,Arial}
+#map{position:absolute;inset:0;z-index:1}#world{position:absolute;inset:0;width:100%;height:100%;z-index:400;pointer-events:none}
+#hud{position:absolute;z-index:700;top:12px;left:12px;right:12px;display:flex;justify-content:space-between;gap:8px;pointer-events:none}
+.panel{background:#101a1be8;border:1px solid #ffffff30;border-radius:12px;padding:10px 13px;backdrop-filter:blur(7px);box-shadow:0 4px 18px #0005}
+#mission{max-width:min(470px,66vw);font-size:12px;line-height:1.4}#stats{text-align:right;font-size:12px;min-width:110px}
+#message{position:absolute;z-index:750;top:100px;left:50%;transform:translateX(-50%);padding:9px 14px;border-radius:20px;background:#101a1beF;font-size:12px;white-space:nowrap;pointer-events:none}
+#cross{position:absolute;z-index:650;left:50%;top:50%;transform:translate(-50%,-50%);width:20px;height:20px;pointer-events:none}
+#cross:before,#cross:after{content:"";position:absolute;background:#fff;box-shadow:0 0 4px #000}#cross:before{width:2px;height:20px;left:9px}#cross:after{height:2px;width:20px;top:9px}
+#bottom{position:absolute;z-index:800;bottom:12px;left:12px;right:12px;display:flex;justify-content:space-between;align-items:end;pointer-events:none}
+.hint{font-size:11px;line-height:1.5}button{pointer-events:auto;border:1px solid #ffffff50;border-radius:12px;padding:12px 16px;color:#fff;background:#17352eeF;font-weight:800}
+#fire{background:#a5362b;min-width:86px;min-height:54px}
+#start{position:absolute;z-index:1000;inset:0;background:linear-gradient(135deg,#10251ff2,#101820f5);display:grid;place-items:center;padding:20px}
+.card{max-width:570px;background:#142923;border:1px solid #ffffff30;border-radius:20px;padding:24px;box-shadow:0 18px 70px #0009}
+.card h1{font-size:clamp(25px,5vw,40px);margin:0 0 8px}.card p{color:#d0ddd7;line-height:1.5}.card button{background:#d18b36;color:#161616;border:0;padding:14px 20px}
+#loading{color:#f3c77c;font-size:12px}.leaflet-control-attribution{font-size:9px!important}.leaflet-control-zoom{display:none}
+@media(max-width:600px){#mission,#stats{font-size:10px}.hint{max-width:58vw}#bottom{bottom:8px}}
+</style></head>
+<body>
+<div id="map"></div><canvas id="world"></canvas>
+<div id="hud">
+ <div class="panel" id="mission"><b>OPERAZIONE SALENTO · MISSIONE 01</b><br><span id="objective">Raggiungi il punto di controllo nel centro di Melendugno.</span><br><small id="phase">FASE 1/2 · Raggiungi l'obiettivo</small></div>
+ <div class="panel" id="stats">VITA <b id="hp">100</b><br>DRONI <b id="kills">0/3</b><br>MUNIZIONI <b id="ammo">12</b></div>
+</div>
+<div id="message">WASD movimento · mouse mira · clic spara · R ricarica</div><div id="cross"></div>
+<div id="bottom"><div class="panel hint">WASD / frecce: muovi · Shift: corri<br>Mouse: mira · Click / Spazio: spara · R: ricarica<br>Su tablet: trascina a destra per ruotare, usa FUOCO</div><button id="fire">FUOCO</button></div>
+<div id="start"><div class="card">
+<h1>Melendugno: Operazione Salento</h1><p><b>Prototipo 0.2 · ambiente 3D migliorato</b></p>
+<p>Questa versione aggiunge edifici estrusi dai dati OpenStreetMap (quando il servizio dati è raggiungibile), collisioni semplificate, nemici mobili, telecamera di inseguimento e una missione in due fasi.</p>
+<p><b>Missione:</b> raggiungi il punto di controllo e neutralizza i tre droni ostili. I bersagli sono fittizi e non rappresentano persone o luoghi reali.</p>
+<p id="loading">Caricamento dei dati geografici…</p><button id="go">AVVIA MISSIONE</button>
+<p style="font-size:11px">Consigliato computer con mouse e tastiera. Richiede connessione internet per cartografia e librerie.</p>
+</div></div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+<script>
+(()=>{
+const origin=L.latLng(40.2709,18.3368), map=L.map('map',{zoomControl:false}).setView(origin,18);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'}).addTo(map);
+const canvas=document.querySelector('#world'),renderer=new THREE.WebGLRenderer({canvas,alpha:true,antialias:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.setSize(innerWidth,innerHeight);renderer.shadowMap.enabled=true;
+const scene=new THREE.Scene();scene.fog=new THREE.Fog(0x293b32,35,115);
+const camera=new THREE.PerspectiveCamera(58,innerWidth/innerHeight,.1,250);
+scene.add(new THREE.HemisphereLight(0xd8edff,0x344331,2.1));
+const sun=new THREE.DirectionalLight(0xffe6c5,2.3);sun.position.set(-25,45,20);sun.castShadow=true;scene.add(sun);
+const floor=new THREE.Mesh(new THREE.PlaneGeometry(300,300),new THREE.MeshStandardMaterial({color:0x52664d,roughness:1}));
+floor.rotation.x=-Math.PI/2;floor.position.y=-.08;floor.receiveShadow=true;scene.add(floor);
+// Simple low-poly player model
+const player=new THREE.Group();scene.add(player);
+const mat=(color,roughness=.8)=>new THREE.MeshStandardMaterial({color,roughness});
+const torso=new THREE.Mesh(new THREE.CapsuleGeometry(.34,.68,4,8),mat(0x315e79));torso.position.y=1.08;torso.castShadow=true;player.add(torso);
+const head=new THREE.Mesh(new THREE.SphereGeometry(.22,12,10),mat(0xd5a77e));head.position.y=1.68;player.add(head);
+const pack=new THREE.Mesh(new THREE.BoxGeometry(.42,.48,.2),mat(0x28352e));pack.position.set(0,1.05,.29);player.add(pack);
+const weapon=new THREE.Mesh(new THREE.BoxGeometry(.12,.12,.75),mat(0x20252a,.35));weapon.position.set(.3,1.22,-.48);player.add(weapon);
+const limbs=[];
+for(let side of [-1,1]){
+ const leg=new THREE.Mesh(new THREE.CapsuleGeometry(.12,.48,3,6),mat(0x26313b));leg.position.set(side*.16,.43,0);player.add(leg);limbs.push(leg);
+ const arm=new THREE.Mesh(new THREE.CapsuleGeometry(.105,.4,3,6),mat(0x315e79));arm.position.set(side*.39,1.15,-.12);arm.rotation.z=side*.16;player.add(arm);limbs.push(arm);
+}
+let playerLL=L.latLng(origin.lat,origin.lng),yaw=0,health=100,ammo=12,kills=0,started=false,phase=0,reload=0,notice=0,walking=0;
+const keys={};const $=id=>document.getElementById(id);
+const msg=t=>{$('message').textContent=t;$('message').style.display='block';notice=2.7};
+function geoMeters(ll){const lat=(ll.lat-playerLL.lat)*111320,lon=(ll.lng-playerLL.lng)*111320*Math.cos(playerLL.lat*Math.PI/180);return {x:lon/4,z:-lat/4};}
+function updateHud(){$('hp').textContent=health;$('ammo').textContent=ammo;$('kills').textContent=kills+'/3';
+ $('objective').textContent=phase===0?'Raggiungi il punto di controllo nel centro di Melendugno.':kills===3?'Area messa in sicurezza. Missione completata!':'Neutralizza i droni ostili: '+(3-kills)+' rimanenti.';
+ $('phase').textContent=phase===0?'FASE 1/2 · Raggiungi l’obiettivo':phase===1?'FASE 2/2 · Metti in sicurezza l’area':'MISSIONE COMPLETATA';}
+const checkpoint=L.latLng(origin.lat+.00022,origin.lng+.0001);
+const marker=L.marker(checkpoint).addTo(map).bindTooltip('Punto di controllo',{permanent:false});
+let enemies=[];
+const enemyCoords=[[.00042,.00032],[-.00036,.00025],[.00018,-.00042]];
+enemyCoords.forEach((o,i)=>{
+ const group=new THREE.Group(),orb=new THREE.Mesh(new THREE.IcosahedronGeometry(.42,1),new THREE.MeshStandardMaterial({color:0xb43a2d,emissive:0x4c1009,roughness:.4}));
+ orb.position.y=1.15;orb.castShadow=true;group.add(orb);
+ const hoop=new THREE.Mesh(new THREE.TorusGeometry(.58,.045,6,18),mat(0xffb14a));hoop.position.y=1.15;hoop.rotation.x=Math.PI/2;group.add(hoop);
+ const lamp=new THREE.PointLight(0xff422b,1.3,6);lamp.position.y=1.3;group.add(lamp);scene.add(group);
+ enemies.push({group,ll:L.latLng(origin.lat+o[0],origin.lng+o[1]),alive:true,phase:i,base:L.latLng(origin.lat+o[0],origin.lng+o[1])});
+});
+// OSM building footprints via Overpass. These are real mapped footprints, extruded locally.
+const buildings=[];
+async function loadBuildings(){
+ const bbox='40.2660,18.3290,40.2755,18.3450';
+ const query='[out:json][timeout:20];(way["building"]('+bbox+'););out body;>;out skel qt;';
+ try{
+  const r=await fetch('https://overpass-api.de/api/interpreter?data='+encodeURIComponent(query),{signal:AbortSignal.timeout(18000)});
+  if(!r.ok)throw Error('Overpass non disponibile');
+  const data=await r.json(),nodes=new Map(),ways=[];
+  data.elements.forEach(e=>{if(e.type==='node')nodes.set(e.id,[e.lat,e.lon]);if(e.type==='way'&&e.tags?.building)ways.push(e);});
+  let count=0;
+  ways.forEach(w=>{
+   const pts=w.nodes.map(id=>nodes.get(id)).filter(Boolean);if(pts.length<4)return;
+   const coords=pts.map(([lat,lon])=>{const p=geoMeters(L.latLng(lat,lon));return [p.x,p.z];});
+   const shape=new THREE.Shape();shape.moveTo(coords[0][0],coords[0][1]);coords.slice(1).forEach(p=>shape.lineTo(p[0],p[1]));shape.closePath();
+   const height=Math.max(2.5,Math.min(15,Number(w.tags['building:levels']||2)*1.65));
+   const mesh=new THREE.Mesh(new THREE.ExtrudeGeometry(shape,{depth:height/4,bevelEnabled:false}),new THREE.MeshStandardMaterial({color:0xc5b99c,roughness:.95}));
+   // Shape coordinates are in horizontal x/z plane; extrusion is rotated into vertical.
+   mesh.rotation.x=-Math.PI/2;mesh.position.y=0;mesh.castShadow=true;mesh.receiveShadow=true;scene.add(mesh);
+   const center=coords.reduce((a,p)=>[a[0]+p[0]/coords.length,a[1]+p[1]/coords.length],[0,0]);
+   buildings.push({mesh,x:center[0],z:center[1],radius:Math.max(1.8,Math.min(5,Math.sqrt(Math.abs(coords.reduce((a,p,i)=>{const q=coords[(i+1)%coords.length];return a+p[0]*q[1]-q[0]*p[1]},0))/Math.PI))});
+   count++;
+  });
+  $('loading').textContent=count?'Edifici OSM caricati: '+count+'.':'Nessun edificio OSM trovato nell’area caricata.';
+ }catch(e){$('loading').textContent='Edifici 3D non caricati: servizio dati non raggiungibile. La mappa resta disponibile.';}
+}
+function refreshBuildings(){buildings.forEach(b=>{const p=geoMeters(L.latLng(playerLL.lat,playerLL.lng));b.mesh.position.x=b.x-p.x;b.mesh.position.z=b.z-p.z;});}
+function enemyWorld(e,t){const p=geoMeters(e.ll);const wanderX=Math.sin(t*.0007+e.phase)*1.7,wanderZ=Math.cos(t*.00055+e.phase)*1.4;e.group.position.set(p.x+wanderX,Math.sin(t*.002+e.phase)*.12,p.z+wanderZ);e.group.rotation.y=t*.001+e.phase;}
+function blocked(next){
+ // Simplified circular collision against OSM building centers.
+ const old=playerLL;playerLL=next;const p=geoMeters(old);playerLL=old;
+ for(const b of buildings){if(Math.hypot(p.x-b.x,p.z-b.z)<b.radius+.75)return true;}return false;
+}
+function move(dt){
+ let f=(keys.KeyW||keys.ArrowUp?1:0)-(keys.KeyS||keys.ArrowDown?1:0),s=(keys.KeyD||keys.ArrowRight?1:0)-(keys.KeyA||keys.ArrowLeft?1:0);
+ if(!f&&!s){walking=0;return;}const l=Math.hypot(f,s);f/=l;s/=l;walking+=dt*10;
+ const speed=(keys.ShiftLeft||keys.ShiftRight?0.000052:0.000031)*dt*60;
+ const dLat=(-Math.cos(yaw)*f+Math.sin(yaw)*s)*speed,dLon=(Math.sin(yaw)*f+Math.cos(yaw)*s)*speed/Math.cos(playerLL.lat*Math.PI/180);
+ const next=L.latLng(playerLL.lat+dLat,playerLL.lng+dLon);
+ if(!blocked(next)){playerLL=next;map.panTo(playerLL,{animate:false});refreshBuildings();}
+}
+function shoot(){
+ if(!started||phase===2)return;if(ammo<=0){msg('Caricatore vuoto: premi R.');return;}ammo--;
+ let hit=null,best=999;
+ enemies.forEach(e=>{if(!e.alive)return;const p=geoMeters(e.ll),dist=Math.hypot(p.x,p.z);const a=Math.atan2(p.x,-p.z);const d=Math.atan2(Math.sin(a-yaw),Math.cos(a-yaw));if(Math.abs(d)<.24&&dist<18&&dist<best){hit=e;best=dist;}});
+ if(hit){hit.alive=false;hit.group.visible=false;kills++;msg('Drone neutralizzato.');}
+ else msg('Mancato. Avvicinati e allinea il mirino.');
+ updateHud();
+}
+function reloadGun(){if(ammo===12||reload>0)return;reload=1.15;msg('Ricarica in corso…');}
+addEventListener('keydown',e=>{keys[e.code]=true;if(e.code==='Space'){e.preventDefault();shoot();}if(e.code==='KeyR')reloadGun();});
+addEventListener('keyup',e=>keys[e.code]=false);
+addEventListener('mousemove',e=>{if(started&&document.pointerLockElement===canvas)yaw-=e.movementX*.0023;});
+canvas.addEventListener('click',()=>{if(started&&!('ontouchstart'in window))canvas.requestPointerLock?.();});
+$('fire').onclick=shoot;
+let touchX=null;addEventListener('touchmove',e=>{if(!started)return;const t=e.touches[0];if(t.clientX>innerWidth*.48){if(touchX!==null)yaw-=(t.clientX-touchX)*.008;touchX=t.clientX;}},{passive:true});
+addEventListener('touchend',()=>touchX=null);
+$('go').onclick=()=>{$('start').style.display='none';started=true;map.invalidateSize();msg('Raggiungi il punto di controllo indicato sulla mappa.');};
+function resize(){renderer.setSize(innerWidth,innerHeight);camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();}addEventListener('resize',resize);
+let last=performance.now();
+function loop(now){requestAnimationFrame(loop);const dt=Math.min((now-last)/1000,.05);last=now;
+ if(started){
+  move(dt);if(reload>0){reload-=dt;if(reload<=0){ammo=12;updateHud();msg('Caricatore pronto.');}}
+  if(notice>0){notice-=dt;if(notice<=0)$('message').style.display='none';}
+  if(phase===0&&playerLL.distanceTo(checkpoint)<.000095){phase=1;msg('Checkpoint raggiunto! I droni sono attivi: neutralizzali.');updateHud();}
+  if(phase===1&&kills===3){phase=2;msg('Missione completata!');updateHud();}
+  player.rotation.y=yaw;
+  limbs.forEach((limb,i)=>{limb.rotation.x=walking?Math.sin(walking+(i%2)*Math.PI)*.55:0;});
+  camera.position.set(Math.sin(yaw)*7.2,4.5,Math.cos(yaw)*7.2);camera.lookAt(0,1.05,0);
+  enemies.forEach(e=>{if(e.alive)enemyWorld(e,now);});
+ }
+ renderer.render(scene,camera);
+}updateHud();loadBuildings();requestAnimationFrame(loop);
+})();
+</script></body></html>
