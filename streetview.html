@@ -1,0 +1,337 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Melendugno: Operazione Salento — Street View</title>
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#000;color:#fff;font-family:system-ui,-apple-system,Arial,sans-serif;-webkit-user-select:none;user-select:none}
+#pano{position:fixed;inset:0}
+#fx{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:5}
+.panel{background:#101a1bd9;border:1px solid #ffffff30;border-radius:12px;padding:10px 13px;backdrop-filter:blur(6px);box-shadow:0 4px 18px #0005}
+#hud{position:fixed;inset:0;pointer-events:none;z-index:10;display:none}
+#mission{position:absolute;top:12px;left:12px;max-width:min(430px,62vw);font-size:12px;line-height:1.45}
+#navrow{display:flex;align-items:center;gap:8px;margin-top:6px}
+#arrow{width:26px;height:26px;transition:transform .08s linear}
+#arrow svg{width:100%;height:100%;display:block}
+#dist{font-weight:700;font-size:14px}
+#stats{position:absolute;top:12px;right:12px;min-width:150px;font-size:12px;line-height:1.6}
+#hpbar{height:8px;border-radius:5px;background:#ffffff25;overflow:hidden;margin:3px 0 6px}
+#hpfill{height:100%;width:100%;background:#4fc07a;transition:width .15s}
+#radar{position:absolute;top:128px;right:12px;width:130px;height:130px;border-radius:50%;border:2px solid #ffffff55;background:#10201bcc}
+#msg{position:absolute;top:96px;left:50%;transform:translateX(-50%);padding:9px 16px;border-radius:20px;background:#101a1bf2;font-size:13px;white-space:nowrap;display:none}
+#cross{position:absolute;left:50%;top:50%;width:26px;height:26px;transform:translate(-50%,-50%)}
+#cross:before,#cross:after{content:"";position:absolute;background:#fff;box-shadow:0 0 3px #000}
+#cross:before{width:2px;height:9px;left:12px;top:0;box-shadow:0 17px 0 #fff,0 0 3px #000}
+#cross:after{height:2px;width:9px;top:12px;left:0;box-shadow:17px 0 0 #fff,0 0 3px #000}
+#hint{position:absolute;left:50%;transform:translateX(-50%);bottom:34px;font-size:11px;line-height:1.5;text-align:center;white-space:nowrap}
+#hurt{position:absolute;inset:0;background:radial-gradient(ellipse at center,#0000 40%,#d0201aaa 100%);opacity:0;transition:opacity .25s}
+#flash{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none}
+#touch{position:absolute;left:12px;bottom:70px;display:none;grid-template-columns:repeat(3,52px);grid-template-rows:repeat(2,52px);gap:6px;pointer-events:auto}
+#touch button,#fire{border:1px solid #ffffff60;border-radius:12px;color:#fff;background:#17352ecc;font-weight:800;font-size:18px}
+#fire{position:absolute;right:18px;bottom:60px;pointer-events:auto;display:none;border-radius:50%;width:84px;height:84px;background:#a5362bdd;font-size:13px}
+.overlay{position:fixed;inset:0;z-index:50;display:grid;place-items:center;padding:18px;background:linear-gradient(135deg,#10251fe6,#101820ee);overflow:auto}
+.card{max-width:600px;background:#142923;border:1px solid #ffffff30;border-radius:20px;padding:24px;box-shadow:0 18px 70px #0009}
+.card h1{font-size:clamp(24px,5vw,36px);margin:0 0 8px}.card h2{margin:0 0 8px}
+.card p{color:#d0ddd7;line-height:1.5;margin:8px 0}
+.card button{background:#d18b36;color:#161616;border:0;padding:13px 20px;border-radius:12px;font-weight:800;font-size:15px;cursor:pointer}
+.card button:disabled{opacity:.5;cursor:default}
+.card input{width:100%;padding:11px;border-radius:10px;border:1px solid #ffffff40;background:#0c1613;color:#fff;font-size:14px;margin:6px 0}
+.card a{color:#f3c77c}
+#status{color:#f3c77c;font-size:12px;min-height:1.4em;word-break:break-word}
+.small{font-size:11px!important}
+@media(max-width:600px){#mission,#stats{font-size:10px}#radar{width:100px;height:100px}}
+</style>
+</head>
+<body>
+<div id="pano"></div>
+<canvas id="fx"></canvas>
+
+<div id="hud">
+ <div class="panel" id="mission"><b>OPERAZIONE SALENTO · MISSIONE 01</b><br><span id="obj">—</span><br><small id="phase">—</small>
+  <div id="navrow"><div id="arrow"><svg viewBox="0 0 24 24"><path d="M12 2 L20 20 L12 15 L4 20 Z" fill="#ffb14a" stroke="#000" stroke-opacity=".5"/></svg></div><span id="dist"></span></div></div>
+ <div class="panel" id="stats">VITA <b id="hp">100</b><div id="hpbar"><div id="hpfill"></div></div>MUNIZIONI <b id="ammo">12</b> / 12<br>DRONI <b id="drn">—</b></div>
+ <canvas id="radar" width="260" height="260"></canvas>
+ <div id="msg"></div><div id="cross"></div>
+ <div class="panel" id="hint">W/S o ↑/↓: avanza/indietro lungo la strada · A/D o ←/→: gira · Trascina: guarda attorno<br>Click / Spazio: spara · R: ricarica</div>
+ <div id="hurt"></div><div id="flash"></div>
+ <div id="touch"><span></span><button data-k="KeyW">▲</button><span></span><button data-k="KeyA">◀</button><button data-k="KeyS">▼</button><button data-k="KeyD">▶</button></div>
+ <button id="fire">FUOCO</button>
+</div>
+
+<div id="start" class="overlay"><div class="card">
+ <h1>Melendugno: Operazione Salento</h1>
+ <p><b>Modalità Street View</b> · il vero paese, con i nemici sovrapposti</p>
+ <p>Ti muovi lungo le strade di Melendugno con le foto di Google Street View. Raggiungi il punto di controllo e neutralizza i droni ostili (bersagli fittizi).</p>
+ <div id="keybox">
+  <p class="small">Serve una chiave API Google Maps (Maps JavaScript API). Viene salvata solo nel tuo browser, non nella repo.
+  <a href="https://developers.google.com/maps/documentation/javascript/get-api-key" target="_blank" rel="noopener">Come ottenerla</a>: abilita «Maps JavaScript API», crea una chiave e limitala ai referrer <b>https://alepettr.github.io/*</b>.</p>
+  <input id="key" type="text" placeholder="Incolla qui la chiave API (AIza…)" autocomplete="off" spellcheck="false">
+ </div>
+ <p id="status"></p>
+ <button id="load">CARICA STREET VIEW</button> <button id="go" disabled>AVVIA MISSIONE</button> <button id="forget" style="display:none;background:#33463f;color:#fff">Cambia chiave</button>
+ <p class="small">Immagini © Google. Il logo e le note legali di Google restano visibili in basso. Dati mappa © OpenStreetMap contributors.</p>
+</div></div>
+<div id="pause" class="overlay" style="display:none"><div class="card"><h2>In pausa</h2><button id="resume">RIPRENDI</button></div></div>
+<div id="end" class="overlay" style="display:none"><div class="card"><h2 id="endTitle"></h2><p id="endText"></p><button id="again">RIGIOCA</button></div></div>
+
+<script>
+(()=>{
+'use strict';
+const $=id=>document.getElementById(id);
+const LAT0=40.2709,LON0=18.3368,KZ=111320,KX=KZ*Math.cos(LAT0*Math.PI/180),RAD=Math.PI/180;
+const EYEH=2.5;               // altezza della camera Street View (m)
+const FOVK=1;                 // calibrazione del campo visivo (1 = FOV orizzontale 180/2^zoom)
+const TOUCH=('ontouchstart' in window)||(navigator.maxTouchPoints>0);
+const rnd=Math.random;
+let pano=null,svc=null,startPano=null,startPos={x:0,z:0},lastPos={x:0,z:0};
+let state='load',hp=100,ammo=12,reload=0,cool=0,phase=0,msgT=0,hurtT=0,recoil=0,drones=[],target={x:80,z:-80,pano:null},lastStep=0,hits=[];
+const keys={};
+const ll2xz=(lat,lng)=>({x:(lng-LON0)*KX,z:-(lat-LAT0)*KZ});
+const xz2ll=(x,z)=>({lat:LAT0-z/KZ,lng:LON0+x/KX});
+const wrap=a=>{a%=360;return a<0?a+360:a;};
+
+/* ---------- caricamento Google Maps ---------- */
+function loadMaps(key){
+ return new Promise((res,rej)=>{
+  if(window.google&&google.maps&&google.maps.StreetViewPanorama)return res();
+  window.__gmInit=()=>res();
+  window.gm_authFailure=()=>{$('status').textContent='Chiave API non valida o non autorizzata per questo sito (controlla referrer, API abilitata e fatturazione).';state='load';};
+  const s=document.createElement('script');
+  s.src='https://maps.googleapis.com/maps/api/js?key='+encodeURIComponent(key)+'&v=weekly&callback=__gmInit';
+  s.onerror=()=>rej(Error('impossibile caricare Google Maps (connessione o blocco contenuti)'));
+  document.head.appendChild(s);
+ });
+}
+const findPano=(lat,lng,radius)=>new Promise(res=>{
+ svc.getPanorama({location:{lat,lng},radius,source:google.maps.StreetViewSource?google.maps.StreetViewSource.OUTDOOR:undefined},(d,st)=>res(st==='OK'?d:null));
+});
+async function init(key){
+ $('status').textContent='Carico Google Maps…';
+ await loadMaps(key);
+ svc=new google.maps.StreetViewService();
+ $('status').textContent='Cerco Street View a Melendugno…';
+ const d=await findPano(LAT0,LON0,200);
+ if(!d)throw Error('nessuna copertura Street View trovata vicino al centro di Melendugno');
+ startPano=d.location.pano;const sp=ll2xz(d.location.latLng.lat(),d.location.latLng.lng());startPos=sp;lastPos=sp;
+ pano=new google.maps.StreetViewPanorama($('pano'),{pano:startPano,pov:{heading:0,pitch:0},zoom:1,
+  disableDefaultUI:true,clickToGo:false,scrollwheel:false,linksControl:false,panControl:false,zoomControl:false,addressControl:false,
+  fullscreenControl:false,motionTracking:false,motionTrackingControl:false,enableCloseButton:false,showRoadLabels:false,visible:true});
+ $('status').textContent='Scelgo il punto di controllo…';
+ await pickTarget();
+ $('status').textContent='Pronto. Street View caricato.';$('go').disabled=false;
+ try{localStorage.setItem('gmkey',key);}catch(e){}
+}
+async function pickTarget(){
+ let cands=[];
+ try{
+  const r=await fetch('data/melendugno.json?v=3');const data=await r.json();
+  for(const e of data.elements||[]){if(e.type!=='way'||!e.tags||!e.tags.highway||!e.geometry)continue;
+   if(/^(footway|path|steps|cycleway|track|pedestrian)$/.test(e.tags.highway))continue;
+   for(const g of e.geometry){const p=ll2xz(g.lat,g.lon),d=Math.hypot(p.x-startPos.x,p.z-startPos.z);if(d>110&&d<240)cands.push({lat:g.lat,lng:g.lon,s:Math.abs(d-170)});}}
+ }catch(e){}
+ cands.sort((a,b)=>a.s-b.s);cands=cands.filter((c,i)=>i%6===0).slice(0,8);
+ if(!cands.length){const q=xz2ll(startPos.x+110,startPos.z-110);cands=[{lat:q.lat,lng:q.lng}];}
+ for(const c of cands){const d=await findPano(c.lat,c.lng,30);if(d){const p=ll2xz(d.location.latLng.lat(),d.location.latLng.lng());target={x:p.x,z:p.z,pano:d.location.pano};return;}}
+ const q=cands[0],p=ll2xz(q.lat,q.lng);target={x:p.x,z:p.z,pano:null};
+}
+
+/* ---------- proiezione 3D -> schermo ---------- */
+function project(wx,wy,wz,P,pov,zoom,W,H){
+ const dx=wx-P.x,dz=wz-P.z,dh=Math.hypot(dx,dz)||.001,dy=wy-EYEH,dd=Math.hypot(dh,dy);
+ const az=Math.atan2(dx,-dz)-pov.heading*RAD;
+ const cE=dh/dd,sE=dy/dd,x=Math.sin(az)*cE,z=Math.cos(az)*cE,y=sE;
+ const p=pov.pitch*RAD,y2=y*Math.cos(p)-z*Math.sin(p),z2=y*Math.sin(p)+z*Math.cos(p);
+ const fov=(180/Math.pow(2,zoom))*RAD*FOVK,f=(W/2)/Math.tan(fov/2);
+ return {ok:z2>.05,sx:W/2+f*x/z2,sy:H/2-f*y2/z2,f,dist:dd};
+}
+const curPos=()=>{const p=pano&&pano.getPosition&&pano.getPosition();if(p){lastPos=ll2xz(p.lat(),p.lng());}return lastPos;};
+const curPov=()=>{const v=pano.getPov();return {heading:v.heading,pitch:v.pitch};};
+const curZoom=()=>{const z=pano.getZoom&&pano.getZoom();return typeof z==='number'?z:1;};
+
+/* ---------- audio ---------- */
+let AC=null;
+function beep(f,d,type='square',v=.05,slide=0){try{AC=AC||new (window.AudioContext||window.webkitAudioContext)();
+ const o=AC.createOscillator(),g=AC.createGain();o.type=type;o.frequency.value=f;if(slide)o.frequency.exponentialRampToValueAtTime(Math.max(30,f+slide),AC.currentTime+d);
+ g.gain.value=v;g.gain.exponentialRampToValueAtTime(.0001,AC.currentTime+d);o.connect(g);g.connect(AC.destination);o.start();o.stop(AC.currentTime+d);}catch(e){}}
+
+/* ---------- HUD ---------- */
+function msg(t,s=2.8){const m=$('msg');m.textContent=t;m.style.display='block';msgT=s;}
+function updateHud(){
+ $('hp').textContent=hp;$('hpfill').style.width=hp+'%';$('hpfill').style.background=hp>50?'#4fc07a':hp>25?'#e0b040':'#d0453a';
+ $('ammo').textContent=ammo;
+ const alive=drones.filter(d=>!d.dead).length;
+ $('drn').textContent=phase===0?'in attesa':(drones.length-alive)+'/'+drones.length;
+ $('obj').textContent=phase===0?'Raggiungi il punto di controllo (fascio arancione).':phase===1?'Neutralizza i droni ostili: '+alive+' rimanenti.':'Area messa in sicurezza.';
+ $('phase').textContent=phase===0?'FASE 1/2 · Raggiungi l’obiettivo':phase===1?'FASE 2/2 · Metti in sicurezza l’area':'MISSIONE COMPLETATA';
+}
+const rc=$('radar'),rx=rc.getContext('2d');
+function drawRadar(P,pov){
+ const W=rc.width,R=W/2,S=R/70,h=pov.heading*RAD,fx=Math.sin(h),fz=-Math.cos(h),rxv=Math.cos(h),rzv=Math.sin(h);
+ rx.clearRect(0,0,W,W);rx.strokeStyle='#ffffff30';rx.lineWidth=1;rx.beginPath();rx.arc(R,R,R*.5,0,7);rx.moveTo(R,0);rx.lineTo(R,W);rx.moveTo(0,R);rx.lineTo(W,R);rx.stroke();
+ const dot=(x,z,c,r)=>{let dx=x-P.x,dz=z-P.z,al=dx*fx+dz*fz,ri=dx*rxv+dz*rzv;const d=Math.hypot(al,ri),lim=66;if(d>lim){al*=lim/d;ri*=lim/d;}rx.fillStyle=c;rx.beginPath();rx.arc(R+ri*S,R-al*S,r,0,7);rx.fill();};
+ for(const d of drones)if(!d.dead)dot(d.x,d.z,'#ff4a30',7);
+ if(phase===0)dot(target.x,target.z,'#ffa33a',9);
+ rx.fillStyle='#fff';rx.beginPath();rx.moveTo(R,R-12);rx.lineTo(R+8,R+9);rx.lineTo(R,R+4);rx.lineTo(R-8,R+9);rx.closePath();rx.fill();
+}
+function updateNav(P,pov){
+ if(phase!==0){$('navrow').style.display='none';return;}
+ $('navrow').style.display='flex';
+ const h=pov.heading*RAD,dx=target.x-P.x,dz=target.z-P.z;
+ const rel=Math.atan2(dx*Math.cos(h)+dz*Math.sin(h),dx*Math.sin(h)-dz*Math.cos(h));
+ $('arrow').style.transform='rotate('+rel+'rad)';$('dist').textContent=Math.round(Math.hypot(dx,dz))+' m';
+}
+
+/* ---------- droni ---------- */
+function spawnDrones(){
+ drones=[];
+ for(let i=0;i<5;i++){const a=rnd()*Math.PI*2,d=22+rnd()*25;
+  drones.push({x:target.x+Math.cos(a)*d,z:target.z+Math.sin(a)*d,y:5+rnd()*4,base:5+rnd()*4,hp:2,t:rnd()*6,cool:2+rnd()*2,dir:rnd()<.5?1:-1,flash:0,dead:false,boom:0});}
+ updateHud();
+}
+function updateDrones(dt,P){
+ for(const d of drones){
+  if(d.dead){if(d.boom>0)d.boom-=dt;continue;}
+  d.t+=dt;const dx=P.x-d.x,dz=P.z-d.z,dist=Math.hypot(dx,dz)||1;let mx,mz;
+  if(dist>16){mx=dx/dist;mz=dz/dist;}else if(dist<9){mx=-dx/dist;mz=-dz/dist;}else{mx=-dz/dist*d.dir;mz=dx/dist*d.dir;}
+  d.x+=mx*3.2*dt;d.z+=mz*3.2*dt;d.y=d.base+Math.sin(d.t*2)*.4;if(d.flash>0)d.flash-=dt;
+  d.cool-=dt;
+  if(d.cool<=0&&dist<45){d.cool=1.6+rnd()*1.3;beep(320,.12,'sawtooth',.03,-120);hits.push({x:d.x,y:d.y,z:d.z,life:.12,fire:true});if(rnd()<(dist<20?.55:.35))damage(6);}
+ }
+}
+function damage(n){hp=Math.max(0,hp-n);hurtT=.45;beep(110,.18,'square',.06,-40);updateHud();if(hp<=0)endGame(false);}
+
+/* ---------- sparo ---------- */
+function shoot(){
+ if(state!=='play'||cool>0||reload>0)return;
+ if(ammo<=0){msg('Caricatore vuoto: premi R.');return;}
+ ammo--;cool=.18;recoil=1;beep(520,.09,'square',.06,-300);$('flash').style.opacity=.35;setTimeout(()=>$('flash').style.opacity=0,50);
+ const W=innerWidth,H=innerHeight,P=curPos(),pov=curPov(),zoom=curZoom();
+ let best=null,bd=1e9;
+ for(const d of drones){if(d.dead)continue;const q=project(d.x,d.y,d.z,P,pov,zoom,W,H);if(!q.ok||q.dist>90)continue;
+  const r=Math.max(9,q.f*.7/q.dist),off=Math.hypot(q.sx-W/2,q.sy-H/2);
+  if(off<r*1.25&&q.dist<bd){best=d;bd=q.dist;}}
+ if(best){best.hp--;best.flash=.12;if(best.hp<=0){best.dead=true;best.boom=.45;beep(160,.35,'sawtooth',.08,-100);msg('Drone neutralizzato.');}
+  hits.push({x:best.x,y:best.y,z:best.z,life:.2});updateHud();
+  if(phase===1&&drones.every(d=>d.dead)){phase=2;updateHud();endGame(true);}}
+ updateHud();
+}
+function reloadGun(){if(state!=='play'||ammo===12||reload>0)return;reload=1.2;msg('Ricarica in corso…',1.2);}
+
+/* ---------- movimento lungo i link di Street View ---------- */
+function stepMove(back){
+ if(!pano||!pano.getLinks)return false;
+ const links=pano.getLinks()||[];if(!links.length)return false;
+ const hd=wrap(pano.getPov().heading+(back?180:0));
+ let best=null,bd=999;
+ for(const l of links){const d=Math.abs(((l.heading-hd+540)%360)-180);if(d<bd){bd=d;best=l;}}
+ if(best&&bd<65){pano.setPano(best.pano);return true;}
+ return false;
+}
+
+/* ---------- disegno overlay ---------- */
+const fxc=$('fx'),fx=fxc.getContext('2d');
+function resizeFx(){const dpr=Math.min(devicePixelRatio||1,2);fxc.width=innerWidth*dpr;fxc.height=innerHeight*dpr;fx.setTransform(dpr,0,0,dpr,0,0);}
+addEventListener('resize',resizeFx);resizeFx();
+function drawFx(P,pov,zoom,dt){
+ const W=innerWidth,H=innerHeight;fx.clearRect(0,0,W,H);
+ if(phase===0){
+  const b=project(target.x,0,target.z,P,pov,zoom,W,H),t=project(target.x,70,target.z,P,pov,zoom,W,H);
+  if(b.ok&&t.ok){const g=fx.createLinearGradient(0,t.sy,0,b.sy);g.addColorStop(0,'rgba(255,163,58,0)');g.addColorStop(1,'rgba(255,163,58,.75)');
+   fx.strokeStyle=g;fx.lineWidth=Math.max(4,b.f*1.6/Math.max(b.dist,5));fx.beginPath();fx.moveTo(t.sx,t.sy);fx.lineTo(b.sx,b.sy);fx.stroke();
+   fx.fillStyle='#ffc060';fx.font='bold 13px system-ui';fx.textAlign='center';fx.fillText(Math.round(b.dist)+' m',b.sx,b.sy+18);}
+ }
+ const list=drones.map(d=>({d,q:project(d.x,d.y,d.z,P,pov,zoom,W,H)})).filter(o=>o.q.ok&&o.q.dist<160).sort((a,b)=>b.q.dist-a.q.dist);
+ for(const {d,q} of list){
+  const r=Math.max(5,q.f*.6/q.dist);
+  if(d.dead){if(d.boom>0){const k=1-d.boom/.45;fx.fillStyle='rgba(255,160,60,'+(1-k)*.85+')';fx.beginPath();fx.arc(q.sx,q.sy,r*(1+k*3),0,7);fx.fill();}continue;}
+  fx.fillStyle='rgba(0,0,0,.18)';fx.beginPath();fx.ellipse(q.sx,q.sy+r*1.5,r*1.1,r*.3,0,0,7);fx.fill();
+  const gr=fx.createRadialGradient(q.sx-r*.3,q.sy-r*.3,r*.1,q.sx,q.sy,r);
+  if(d.flash>0){gr.addColorStop(0,'#fff');gr.addColorStop(1,'#ffd9d0');}else{gr.addColorStop(0,'#ff7a60');gr.addColorStop(1,'#8a1f14');}
+  fx.fillStyle=gr;fx.beginPath();fx.arc(q.sx,q.sy,r,0,7);fx.fill();
+  fx.strokeStyle='#ffb14a';fx.lineWidth=Math.max(1.5,r*.12);fx.beginPath();fx.ellipse(q.sx,q.sy,r*1.45,r*.45,d.t*3%6.28,0,7);fx.stroke();
+ }
+ for(let i=hits.length-1;i>=0;i--){const h=hits[i];h.life-=dt;if(h.life<=0){hits.splice(i,1);continue;}
+  const q=project(h.x,h.y,h.z,P,pov,zoom,W,H);if(!q.ok)continue;
+  fx.strokeStyle=h.fire?'rgba(255,74,48,.9)':'rgba(255,240,160,.95)';fx.lineWidth=3;
+  if(h.fire){fx.beginPath();fx.moveTo(q.sx,q.sy);fx.lineTo(W/2+(Math.random()-.5)*60,H/2+60+(Math.random()-.5)*40);fx.stroke();}
+  else{fx.beginPath();fx.arc(q.sx,q.sy,12,0,7);fx.stroke();}}
+}
+
+/* ---------- flusso di gioco ---------- */
+function resetGame(){
+ hp=100;ammo=12;reload=0;cool=0;phase=0;drones=[];hits=[];
+ if(pano){pano.setPano(startPano);const brg=Math.atan2(target.x-startPos.x,-(target.z-startPos.z))/RAD;pano.setPov({heading:wrap(brg),pitch:0});pano.setZoom&&pano.setZoom(1);}
+ lastPos=startPos;updateHud();
+}
+function startGame(){
+ resetGame();state='play';
+ for(const id of ['start','end','pause'])$(id).style.display='none';$('hud').style.display='block';
+ $('touch').style.display=TOUCH?'grid':'none';$('fire').style.display=TOUCH?'block':'none';$('hint').style.display=TOUCH?'none':'block';
+ msg('Segui la freccia fino al fascio arancione.',3.5);
+}
+function endGame(win){
+ state='over';if(win)phase=2;
+ $('endTitle').textContent=win?'Missione completata!':'Missione fallita';
+ $('endText').textContent=win?'Hai messo in sicurezza il centro di Melendugno.':'I droni hanno avuto la meglio. Riprova.';
+ $('end').style.display='grid';
+}
+$('go').onclick=startGame;$('again').onclick=startGame;
+$('resume').onclick=()=>{if(state==='pause'){state='play';$('pause').style.display='none';}};
+$('load').onclick=()=>{const k=$('key').value.trim();if(!k){$('status').textContent='Incolla prima la chiave API.';return;}
+ $('load').disabled=true;init(k).catch(e=>{console.error(e);$('status').textContent='Errore: '+e.message;}).finally(()=>$('load').disabled=false);};
+$('forget').onclick=()=>{try{localStorage.removeItem('gmkey');}catch(e){}$('key').value='';$('forget').style.display='none';$('status').textContent='Chiave rimossa. Se hai già caricato Street View, ricarica la pagina.';};
+
+/* ---------- input ---------- */
+addEventListener('keydown',e=>{
+ if(state!=='play')return;
+ const handled=['KeyW','KeyA','KeyS','KeyD','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space','KeyR','Equal','Minus'];
+ if(handled.includes(e.code)){e.preventDefault();e.stopPropagation();}else return;
+ keys[e.code]=true;
+ if(e.code==='Space')shoot();
+ if(e.code==='KeyR')reloadGun();
+ if(e.code==='Escape'){}
+},true);
+addEventListener('keyup',e=>{keys[e.code]=false;},true);
+let md=null;
+addEventListener('mousedown',e=>{md={x:e.clientX,y:e.clientY,t:performance.now()};},true);
+addEventListener('mouseup',e=>{
+ if(state!=='play'||!md)return;
+ const moved=Math.hypot(e.clientX-md.x,e.clientY-md.y),dtm=performance.now()-md.t;md=null;
+ if(e.target.closest&&e.target.closest('button'))return;
+ if(moved<6&&dtm<350)shoot();
+},true);
+document.querySelectorAll('#touch button').forEach(b=>{
+ const k=b.dataset.k;
+ b.addEventListener('pointerdown',e=>{e.preventDefault();keys[k]=true;});
+ for(const ev of ['pointerup','pointerleave','pointercancel'])b.addEventListener(ev,()=>{keys[k]=false;});
+});
+$('fire').addEventListener('pointerdown',e=>{e.preventDefault();shoot();});
+
+/* ---------- ciclo ---------- */
+let last=performance.now();
+function loop(now){
+ requestAnimationFrame(loop);
+ const dt=Math.min((now-last)/1000,.05);last=now;
+ if(state!=='play'||!pano){if(state!=='play'){fx.clearRect(0,0,innerWidth,innerHeight);}return;}
+ const P=curPos(),pov=curPov(),zoom=curZoom();
+ // rotazione con A/D e frecce
+ const turn=(keys.KeyD||keys.ArrowRight?1:0)-(keys.KeyA||keys.ArrowLeft?1:0);
+ if(turn){pano.setPov({heading:wrap(pov.heading+turn*95*dt),pitch:pov.pitch});pov.heading=wrap(pov.heading+turn*95*dt);}
+ // avanzamento a passi lungo i link
+ const mv=(keys.KeyW||keys.ArrowUp?1:0)-(keys.KeyS||keys.ArrowDown?1:0);
+ if(mv&&now-lastStep>480){if(stepMove(mv<0))lastStep=now;else lastStep=now-300;}
+ if(cool>0)cool-=dt;
+ if(reload>0){reload-=dt;if(reload<=0){ammo=12;updateHud();msg('Caricatore pronto.',1.2);}}
+ if(msgT>0){msgT-=dt;if(msgT<=0)$('msg').style.display='none';}
+ if(hurtT>0)hurtT-=dt;$('hurt').style.opacity=Math.max(0,Math.min(1,hurtT*2.2));
+ if(phase===0&&Math.hypot(P.x-target.x,P.z-target.z)<18){phase=1;spawnDrones();msg('Checkpoint raggiunto! I droni sono attivi.',3.5);beep(700,.25,'sine',.06,300);updateHud();}
+ updateDrones(dt,P);updateNav(P,pov);drawRadar(P,pov);drawFx(P,pov,zoom,dt);
+}
+requestAnimationFrame(loop);
+try{const k=localStorage.getItem('gmkey');if(k){$('key').value=k;$('forget').style.display='inline-block';$('status').textContent='Chiave salvata. Premi «Carica Street View».';}}catch(e){}
+})();
+</script>
+</body>
+</html>
