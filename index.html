@@ -524,26 +524,32 @@ function loop(now){
 }
 
 /* ---------- caricamento dati OSM (Overpass) con cache e fallback ---------- */
-async function fetchOverpass(){
+async function fetchJSON(url,opt,ms){
+ const ctl=new AbortController(),to=setTimeout(()=>ctl.abort(),ms);
+ try{const r=await fetch(url,Object.assign({signal:ctl.signal},opt||{}));if(!r.ok)throw Error('HTTP '+r.status);return await r.json();}
+ finally{clearTimeout(to);}
+}
+async function fetchOverpass(errs){
  const dLat=.0042,dLon=.0054,bb=(LAT0-dLat)+','+(LON0-dLon)+','+(LAT0+dLat)+','+(LON0+dLon);
  const q='[out:json][timeout:25];(way["building"]('+bb+');way["highway"]('+bb+'););out geom;';
- const urls=['https://overpass-api.de/api/interpreter','https://overpass.kumi.systems/api/interpreter'];
- for(const u of urls){
-  const ctl=new AbortController(),to=setTimeout(()=>ctl.abort(),22000);
-  try{const r=await fetch(u+'?data='+encodeURIComponent(q),{signal:ctl.signal});clearTimeout(to);if(!r.ok)continue;return await r.json();}
-  catch(e){clearTimeout(to);}
- }
- return null;
+ const urls=['https://overpass-api.de/api/interpreter','https://overpass.private.coffee/api/interpreter','https://overpass.kumi.systems/api/interpreter','https://lz4.overpass-api.de/api/interpreter'];
+ const one=u=>fetchJSON(u,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8'},body:'data='+encodeURIComponent(q)},28000)
+  .then(d=>{if(!d||!d.elements||d.elements.length<50)throw Error('risposta vuota');return d;})
+  .catch(e=>{errs.push(new URL(u).host+': '+(e.name==='AbortError'?'timeout':e.message));throw e;});
+ try{return await Promise.any(urls.map(one));}catch(e){return null;}
 }
 async function loadWorld(){
- const KEY='melendugno-osm-v3';let data=null;
- try{const c=localStorage.getItem(KEY);if(c)data=JSON.parse(c);}catch(e){}
- if(!data){$('status').textContent='Scarico mappe e edifici di Melendugno da OpenStreetMap…';data=await fetchOverpass();
-  if(data){try{localStorage.setItem(KEY,JSON.stringify(data));}catch(e){}}}
+ const KEY='melendugno-osm-v4',errs=[];let data=null,src='';
+ try{const c=localStorage.getItem(KEY);if(c){data=JSON.parse(c);src='cache';}}catch(e){}
+ if(!data){$('status').textContent='Carico i dati di Melendugno…';
+  try{data=await fetchJSON('data/melendugno.json?v=3',null,20000);if(!data.elements||data.elements.length<50)throw Error('file vuoto');src='repo';}
+  catch(e){data=null;errs.push('data/melendugno.json: '+e.message);}}
+ if(!data){$('status').textContent='Scarico i dati da OpenStreetMap (Overpass)…';data=await fetchOverpass(errs);if(data)src='overpass';}
+ if(data&&src!=='cache'){try{localStorage.setItem(KEY,JSON.stringify(data));}catch(e){}}
  let w=data?parseOSM(data):null;
  if(!w||w.buildings.length<20){w=fallbackWorld();realData=false;
-  $('status').textContent='Dati OpenStreetMap non raggiungibili: uso un paese di prova generato. Ricarica più tardi per il vero Melendugno.';}
- else{realData=true;$('status').textContent='Melendugno caricata: '+w.buildings.length+' edifici, '+w.roads.length+' strade.';}
+  $('status').textContent='Dati OpenStreetMap non raggiungibili: uso un paese di prova generato. Dettagli: '+errs.join(' | ');console.warn(errs);}
+ else{realData=true;$('status').textContent='Melendugno caricata ('+src+'): '+w.buildings.length+' edifici, '+w.roads.length+' strade.';}
  bld=w.buildings;roads=w.roads;
  buildWorldMeshes();pickSpawnAndTarget();
  px=spawn.x;pz=spawn.z;state='menu';$('go').disabled=false;
