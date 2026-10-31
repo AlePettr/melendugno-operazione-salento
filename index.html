@@ -80,8 +80,8 @@ const toX=lon=>(lon-LON0)*KX,toZ=lat=>-(lat-LAT0)*KZ;
 const TOUCH=('ontouchstart' in window)||(navigator.maxTouchPoints>0);
 const EYE=1.65,RADIUS=.45,LIMIT=430;
 const ROADW={motorway:12,trunk:11,primary:10,secondary:9,tertiary:8,unclassified:6,residential:6,living_street:5,service:4,pedestrian:5,footway:2.5,path:2.5,steps:2.5,cycleway:2.5,track:3};
-const WALLCOLS=['#e8dcc4','#dccfb0','#efe6d2','#d9c9a6','#e3d3b8','#f1ece0','#cdb792'];
-const ROOFCOLS=['#8c6a55','#7d6a60','#a0795f','#6f6a66'];
+const WALLCOLS=['#f0e4c8','#e6d3a8','#f4ece0','#e2c9a0','#d9b98a','#f6f0e6','#e8d9b8','#d8a886'];
+const ROOFCOLS=['#a4573e','#9a5a44','#b4694a','#7a6a64'];
 const mulberry=a=>()=>{a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};
 
 /* ---------- renderer e scena ---------- */
@@ -92,13 +92,13 @@ catch(e){$('status').textContent='Errore: WebGL non disponibile in questo browse
 renderer.setPixelRatio(Math.min(devicePixelRatio||1,2));renderer.setSize(innerWidth,innerHeight);
 renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;
 const SKY=0x9cc6e8;
-const scene=new THREE.Scene();scene.background=new THREE.Color(SKY);scene.fog=new THREE.Fog(SKY,70,300);
-const camera=new THREE.PerspectiveCamera(68,innerWidth/innerHeight,.1,500);camera.rotation.order='YXZ';scene.add(camera);
-scene.add(new THREE.HemisphereLight(0xdcecff,0x7a6a52,1.7));
-const sun=new THREE.DirectionalLight(0xfff0d6,2.6);sun.castShadow=true;
+const scene=new THREE.Scene();scene.background=new THREE.Color(SKY);scene.fog=new THREE.Fog(SKY,120,430);
+const camera=new THREE.PerspectiveCamera(68,innerWidth/innerHeight,.1,700);camera.rotation.order='YXZ';scene.add(camera);
+scene.add(new THREE.HemisphereLight(0xdcecff,0x6f6552,1.25));
+const sun=new THREE.DirectionalLight(0xfff0d6,3.1);sun.castShadow=true;
 sun.shadow.mapSize.set(2048,2048);const sc=sun.shadow.camera;sc.left=-75;sc.right=75;sc.top=75;sc.bottom=-75;sc.near=1;sc.far=260;
 sun.shadow.bias=-.0004;sun.shadow.normalBias=.4;scene.add(sun,sun.target);
-const ground=new THREE.Mesh(new THREE.PlaneGeometry(2400,2400),new THREE.MeshStandardMaterial({color:0xb9ae94,roughness:1}));
+const ground=new THREE.Mesh(new THREE.PlaneGeometry(2400,2400),new THREE.MeshStandardMaterial({color:0x8d8a78,roughness:1}));
 ground.rotation.x=-Math.PI/2;ground.receiveShadow=true;scene.add(ground);
 
 /* ---------- dati del mondo ---------- */
@@ -190,21 +190,23 @@ function buildWorldMeshes(){
  };
  if(wall.p.length)mk(wall,new THREE.MeshStandardMaterial({map:windowTexture(),vertexColors:true,roughness:.95,side:THREE.DoubleSide}));
  if(roof.p.length)mk(roof,new THREE.MeshStandardMaterial({vertexColors:true,roughness:1,side:THREE.DoubleSide}));
- // strade: nastri piatti
- const rp=[],rn=[];
- for(const r of roads){
-  for(let i=0;i<r.pts.length-1;i++){
-   const a=r.pts[i],b=r.pts[i+1],dx=b[0]-a[0],dz=b[1]-a[1],L=Math.hypot(dx,dz);if(L<.01)continue;
-   const nx=-dz/L*r.w/2,nz=dx/L*r.w/2,y=.03;
-   const v=[[a[0]+nx,a[1]+nz],[a[0]-nx,a[1]-nz],[b[0]+nx,b[1]+nz],[b[0]-nx,b[1]-nz]];
-   for(const k of [0,1,2,2,1,3]){rp.push(v[k][0],y,v[k][1]);rn.push(0,1,0);}
+ // strade: marciapiede chiaro + asfalto scuro (winding con normale verso l'alto)
+ const ribbon=(extra,y,color)=>{
+  const rp=[],rn=[];
+  for(const r of roads){
+   for(let i=0;i<r.pts.length-1;i++){
+    const a=r.pts[i],b=r.pts[i+1],dx=b[0]-a[0],dz=b[1]-a[1],L=Math.hypot(dx,dz);if(L<.01)continue;
+    const hw=(r.w+extra)/2,nx=-dz/L*hw,nz=dx/L*hw;
+    const v=[[a[0]+nx,a[1]+nz],[a[0]-nx,a[1]-nz],[b[0]+nx,b[1]+nz],[b[0]-nx,b[1]-nz]];
+    for(const k of [0,2,1,2,3,1]){rp.push(v[k][0],y,v[k][1]);rn.push(0,1,0);}
+   }
   }
- }
- if(rp.length){
+  if(!rp.length)return;
   const geo=new THREE.BufferGeometry();
   geo.setAttribute('position',new THREE.Float32BufferAttribute(rp,3));geo.setAttribute('normal',new THREE.Float32BufferAttribute(rn,3));
-  const m=new THREE.Mesh(geo,new THREE.MeshStandardMaterial({color:0x5d5f5c,roughness:1,side:THREE.DoubleSide}));m.receiveShadow=true;m.frustumCulled=false;worldGroup.add(m);
- }
+  const m=new THREE.Mesh(geo,new THREE.MeshStandardMaterial({color,roughness:1,side:THREE.DoubleSide}));m.receiveShadow=true;m.frustumCulled=false;worldGroup.add(m);
+ };
+ ribbon(3.2,.02,0xb9b2a0);ribbon(0,.04,0x4b4e50);
  scene.add(worldGroup);
  // griglia spaziale per le collisioni
  grid.clear();
@@ -213,6 +215,31 @@ function buildWorldMeshes(){
    const k=gk(i,j);let l=grid.get(k);if(!l){l=[];grid.set(k,l);}l.push(idx);
   }
  });
+ addTrees();
+}
+function addTrees(){
+ const rr=mulberry(5),pos=[];
+ for(const r of roads){
+  if(r.w<5)continue;
+  let acc=0,side=1;
+  for(let i=0;i<r.pts.length-1&&pos.length<450;i++){
+   const a=r.pts[i],b=r.pts[i+1],dx=b[0]-a[0],dz=b[1]-a[1],L=Math.hypot(dx,dz);if(L<.01)continue;
+   for(let d=(14-acc%14);d<L&&pos.length<450;d+=14){
+    const o=r.w/2+2.4,x=a[0]+dx/L*d-dz/L*o*side,z=a[1]+dz/L*d+dx/L*o*side;side=-side;
+    if(Math.abs(x)<LIMIT&&Math.abs(z)<LIMIT&&!hitsBuilding(x,z,1.6)&&rr()<.7)pos.push([x,z,.8+rr()*.6]);
+   }
+   acc+=L;
+  }
+ }
+ if(!pos.length)return;
+ const trunk=new THREE.InstancedMesh(new THREE.CylinderGeometry(.13,.18,2.4,6),new THREE.MeshStandardMaterial({color:0x6b4a2f,roughness:1}),pos.length);
+ const crown=new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1.3,1),new THREE.MeshStandardMaterial({color:0x4f7a3a,roughness:1,flatShading:true}),pos.length);
+ const dm=new THREE.Object3D();
+ pos.forEach((q,i)=>{
+  dm.position.set(q[0],1.2,q[1]);dm.scale.set(1,1,1);dm.updateMatrix();trunk.setMatrixAt(i,dm.matrix);
+  dm.position.set(q[0],3.3*q[2],q[1]);dm.scale.set(q[2],q[2]*1.15,q[2]);dm.updateMatrix();crown.setMatrixAt(i,dm.matrix);
+ });
+ for(const m of [trunk,crown]){m.castShadow=true;m.receiveShadow=true;m.frustumCulled=false;worldGroup.add(m);}
 }
 
 /* ---------- collisioni ---------- */
@@ -254,9 +281,9 @@ const soldier=new THREE.Group();scene.add(soldier);soldier.visible=false;
  soldier.userData.legs=[];
  for(const s of [-1,1]){const l=new THREE.Mesh(new THREE.CapsuleGeometry(.12,.55,3,6),mat(0x26313b));l.position.set(s*.15,.5,0);l.castShadow=true;soldier.add(l);soldier.userData.legs.push(l);}}
 const gun=new THREE.Group();camera.add(gun);
-{const b=new THREE.Mesh(new THREE.BoxGeometry(.07,.09,.5),mat(0x1d2126,.35));b.position.set(.22,-.2,-.5);gun.add(b);
- const g2=new THREE.Mesh(new THREE.BoxGeometry(.06,.14,.1),mat(0x1d2126,.5));g2.position.set(.22,-.28,-.35);gun.add(g2);}
-const flash=new THREE.PointLight(0xffc070,0,12);flash.position.set(.22,-.15,-.9);camera.add(flash);
+{const b=new THREE.Mesh(new THREE.BoxGeometry(.045,.06,.32),mat(0x1d2126,.35));b.position.set(.17,-.17,-.45);gun.add(b);
+ const g2=new THREE.Mesh(new THREE.BoxGeometry(.04,.09,.06),mat(0x1d2126,.5));g2.position.set(.17,-.22,-.36);gun.add(g2);}
+const flash=new THREE.PointLight(0xffc070,0,12);flash.position.set(.17,-.13,-.8);camera.add(flash);
 const beacon=new THREE.Group();scene.add(beacon);
 {const c=new THREE.Mesh(new THREE.CylinderGeometry(1.4,1.4,90,16,1,true),new THREE.MeshBasicMaterial({color:0xffa33a,transparent:true,opacity:.35,depthWrite:false,side:THREE.DoubleSide,fog:false}));c.position.y=45;beacon.add(c);
  const r=new THREE.Mesh(new THREE.TorusGeometry(3.2,.18,8,28),new THREE.MeshBasicMaterial({color:0xffc060,fog:false}));r.rotation.x=Math.PI/2;r.position.y=.2;beacon.add(r);}
@@ -271,16 +298,22 @@ function beep(f,d,type='square',v=.05,slide=0){try{
 /* ---------- utilità ---------- */
 function msg(t,s=2.8){const m=$('msg');m.textContent=t;m.style.display='block';msgT=s;}
 function allVertices(){const v=[];for(const r of roads)for(const p of r.pts)v.push(p);return v;}
+function density(x,z,R=40){
+ let n=0;const seen=new Set();
+ for(let i=Math.floor((x-R)/CELL);i<=Math.floor((x+R)/CELL);i++)for(let j=Math.floor((z-R)/CELL);j<=Math.floor((z+R)/CELL);j++){
+  const l=grid.get(gk(i,j));if(!l)continue;
+  for(const bi of l){if(seen.has(bi))continue;seen.add(bi);const b=bld[bi];if(Math.hypot((b.minx+b.maxx)/2-x,(b.minz+b.maxz)/2-z)<R)n++;}
+ }
+ return n;
+}
 function pickSpawnAndTarget(){
- const V=allVertices();
- let best=null,bd=1e9;
- for(const p of V){const d=Math.hypot(p[0],p[1]);if(d<bd&&Math.abs(p[0])<LIMIT&&Math.abs(p[1])<LIMIT&&!hitsBuilding(p[0],p[1],RADIUS+.3)){bd=d;best=p;}}
+ const V=allVertices().filter(p=>Math.abs(p[0])<LIMIT&&Math.abs(p[1])<LIMIT&&!hitsBuilding(p[0],p[1],RADIUS+.3));
+ let best=null,bs=-1e9;
+ for(const p of V){const d=Math.hypot(p[0],p[1]);if(d>260)continue;const sc=density(p[0],p[1])-d*.04;if(sc>bs){bs=sc;best=p;}}
  spawn=best?{x:best[0],z:best[1]}:{x:0,z:0};
- if(hitsBuilding(spawn.x,spawn.z,RADIUS+.3)){for(let r=2;r<40&&hitsBuilding(spawn.x,spawn.z,RADIUS+.3);r+=2){spawn.x+=r*Math.cos(r);spawn.z+=r*Math.sin(r);}}
- let tb=null,tdv=1e9;
- for(const p of V){const d=Math.hypot(p[0]-spawn.x,p[1]-spawn.z);if(d<110||d>230||Math.abs(p[0])>LIMIT||Math.abs(p[1])>LIMIT)continue;
-  if(hitsBuilding(p[0],p[1],RADIUS+.3))continue;const s=Math.abs(d-160);if(s<tdv){tdv=s;tb=p;}}
- if(!tb){let fd=0;for(const p of V){const d=Math.hypot(p[0]-spawn.x,p[1]-spawn.z);if(d>fd&&d<300&&!hitsBuilding(p[0],p[1],RADIUS+.3)){fd=d;tb=p;}}}
+ let tb=null,ts=-1e9;
+ for(const p of V){const d=Math.hypot(p[0]-spawn.x,p[1]-spawn.z);if(d<110||d>230)continue;const sc=density(p[0],p[1])-Math.abs(d-160)*.05;if(sc>ts){ts=sc;tb=p;}}
+ if(!tb){let fd=0;for(const p of V){const d=Math.hypot(p[0]-spawn.x,p[1]-spawn.z);if(d>fd&&d<300){fd=d;tb=p;}}}
  target=tb?{x:tb[0],z:tb[1]}:{x:spawn.x+90,z:spawn.z-90};
  beacon.position.set(target.x,0,target.z);
 }

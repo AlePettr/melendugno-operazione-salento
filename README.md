@@ -17,6 +17,10 @@ Se Overpass non risponde, il gioco usa un paese di prova generato, così resta g
 1. Raggiungi il punto di controllo (fascio di luce arancione, freccia e distanza nell'HUD, minimappa).
 2. Neutralizza i 5 droni ostili: ti inseguono e sparano, e non vedono attraverso gli edifici.
 
+## Aggiornamento grafica
+- Strade asfaltate con marciapiede, alberi lungo le vie, palette più contrastata, nebbia più lontana
+- Partenza e obiettivo scelti nelle zone più dense di edifici
+
 ## Novità v0.3
 - Ricostruzione completa: niente più mappa 2D sotto, ora è un vero mondo 3D
 - Edifici estrusi dalle impronte OSM con finestre e tetti, strade, collisioni precise con scorrimento sui muri
